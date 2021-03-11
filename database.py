@@ -67,7 +67,6 @@ class KMDB:
         cols = str(col)[1:-1]
         cols = cols.replace("'","")
         sql = f'INSERT INTO {table} ({cols}) VALUES ({str(values)[1:-1]})'
-        #print(sql)
         cursor.execute(sql)
         self.db.commit()
     def assignkm(self,gid,id=0):
@@ -99,7 +98,6 @@ class KMDB:
             cursor.execute(sql)
             row = cursor.fetchone()
             if row:
-                print(row['id'])
                 self.assignkm(gid,row['id'])
                 return row
         return False

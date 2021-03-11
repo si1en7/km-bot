@@ -86,7 +86,7 @@ async def on_message(message):
                         # image sucessfully procesed
                         if result == 0:
                             await message.remove_reaction('🔎',bot.user)
-                           await message.add_reaction('✅')
+                            await message.add_reaction('✅')
                         # image partially processed
                         if result < 8 and result > 0:
                             await message.remove_reaction('🔎',bot.user)
@@ -131,7 +131,7 @@ async def kmhelp(ctx):
 @is_km_channel()
 async def kmtoday(ctx, loss=""):
     if loss == "loss":
-        await ctx.send(kmdb.getiskday("now","loss"))
+        await ctx.send(kmdb.getiskday("now",loss))
     else:
         await ctx.send(kmdb.getiskday("now","kill"))
 
@@ -220,18 +220,11 @@ async def kmfixdone(ctx):
 @commands.check_any(commands.is_owner(),is_role_allowed())
 async def kmimporthist(ctx):
     await ctx.send(f'Starting channel import. This will take a _long_ time.')
-    async for message in ctx.channel.history(oldest_first=True):
-        if bot.user != message.author:
-            if message.attachments:
-                for attachment in message.attachments:
-                    if attachment.filename.endswith(".png") or attachment.filename.endswith(".jpg") or attachment.filename.endswith(".jpeg"):
-                        await message.add_reaction('🔎')
-                        file = requests.get(attachment.url,allow_redirects=True, stream=True)
-                        file.raw.decode_content = True
-                        open("screenshots/{}_{}".format(message.id,attachment.filename),"wb").write(file.content)
-                        parser = mp.Parser()
-                        parser.processkm("{}_{}".format(message.id,attachment.filename),message.id, message.guild.id)
-    await ctx.send(f'Channel import completed. Please use **!kmfix** to review any reports that are partially imported.')
+    count = 0
+    async for message in ctx.channel.history(oldest_first=True, limit=None):
+        count = count + histparse(message)
+    print(count)
+    await ctx.send(f'Channel import completed, {count} records were processed. Please use **!kmfix** to review any reports that are partially imported.')
 
 @bot.command(name='kmdebug')
 @is_km_channel()
@@ -239,5 +232,18 @@ async def kmimporthist(ctx):
 async def kmdebug(ctx):
     await ctx.send(kmdb.toggledebug(ctx.guild.id))
     
-           
+def histparse(message):
+    counter = 0
+    if bot.user != message.author:
+        if message.attachments:
+            counter = 1
+            for attachment in message.attachments:
+                if attachment.filename.endswith(".png") or attachment.filename.endswith(".jpg") or attachment.filename.endswith(".jpeg"):
+                    file = requests.get(attachment.url,allow_redirects=True, stream=True)
+                    file.raw.decode_content = True
+                    open("screenshots/{}_{}".format(message.id,attachment.filename),"wb").write(file.content)
+                    parser = mp.Parser()
+                    parser.processkm("{}_{}".format(message.id,attachment.filename),message.id, message.guild.id)
+    #print(type(message.id))
+    return counter
 bot.run(TOKEN)

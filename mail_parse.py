@@ -15,20 +15,16 @@ import numpy as np
 
 global imgfileloc
 imgfileloc = "screenshots/"
-global aspect
-'''
-location of kill mail given a certain aspect ratio, scaled to a height of 1080 pixel
-'''
-aspect = {"1.33": (110, 185, 1330, 890), "1.43": (120, 164, 1428, 920), "1.6": (132, 120, 1598, 966), "1.77": (148, 72, 1776, 1012), "1.78": (148, 72, 1776, 1012), "1.79": (148, 72, 1776, 1012), "2": (
-    322, 72, 1950, 1012), "ref": (322, 72, 1950, 1012), "3": (359, 72, 1981, 1010)}
+
 
 
 global template
 template = {1.3: "template/1.3.png",1.6:"template/1.6.png",1.7:"template/1.7.png", 2.1:"template/2.1.png"}
+
 global cropCoords
-'''
-location of kill mail elements
-'''
+
+# location of kill mail elements, the type of image processing, and the resize factor
+
 cropCoords = {
     "name": {
         "coord": (106, 76, 453, 109),
@@ -55,6 +51,7 @@ cropCoords = {
         "type": 1, 
         "resize": [0,0]
     },
+    # Todo, OCR has trouble with this section
     # "playerid": {
     #     "coord": (79, 12, 352, 44),
     #     "type": 1
@@ -87,7 +84,8 @@ class Parser:
         print(f'{img.size[0]} x {img.size[1]}')
         if img.size[0] < 720 or img.size[1] < 960:
             return False
-        
+
+    # regardless of ratio, resize the screenshot to a hieght of 1080 and keep the ratio   
     def ssresize(self,filename):
         screenshot = Image.open(filename)
         width, height = screenshot.size
@@ -99,6 +97,7 @@ class Parser:
         img.save('output/resized_image.png')
         return (img.size[0],img.size[1])
 
+    # using the crop coordinates generated the cv2 template search, crop the resized screenshot to only include kill mail
     def sscrop(self,filename, coords):
         image_obj = Image.open(filename)
         cropped_image = image_obj.crop(coords)
@@ -108,6 +107,8 @@ class Parser:
         cropped_image = cropped_image.resize((wsize, baseheight), Image.ANTIALIAS)
         cropped_image.save("output/cropped_current.png")
 
+    # determine the screenshot ratio, already cropped screenshots will have a pixel ratio around 1.73
+    # Truncate the ratio to X.Y as the template should work for slight variations
     def ssratio(self,filename):
         img = Image.open(filename)
         ratio = img.size[0]/img.size[1]
@@ -119,12 +120,14 @@ class Parser:
                 return template[ratio]
             else:
                 return False
+    # due to the font used in game, some images need to be stretched for OCR to be read better
     def resizeimage(self,name,percent):
         imagetemp = Image.open("output/"+name+".png")
         imagetemp = imagetemp.resize(
             (imagetemp.size[0]+int(imagetemp.size[0]*percent[0]), imagetemp.size[1]+int(imagetemp.size[1]*percent[1])), Image.ANTIALIAS)
         imagetemp.save("output/"+name+".png")
 
+    # save the elements needed out of the cropped kill mail
     def cropMail(self, coords, imageAdjust, output, file):
         image_obj = Image.open(file)
         cropped_image = image_obj.crop(coords)
@@ -148,42 +151,23 @@ class Parser:
             cropped_image = filterimg.enhance(2)
         cropped_image.save(output)
 
-    # shift given crop coordinates when all else fails (usually just on the x-axis)
-    # def shiftCrop(self, coords, shift):
-    #     newCoords = [0, 0, 0, 0]
-    #     for count, value in enumerate(coords):
-    #         value = int(value)
-    #         if (count % 2) == 0:
-    #             newCoords[count] = round(value + (value * shift))
-    #         else:
-    #             newCoords[count] = value
-    #     return (newCoords[0], newCoords[1], newCoords[2], newCoords[3])
-
     # sanity checking OCR output, makes any corrections to input and returns it
     def verifyOutput(self, type, value):
-        # minimum check for some type of corp tag followed by whatever due to wildly variable names and special characters
-        # if type == "name" or:
-        #     result = re.search(r'(\[[A-Z,0-9]*\])?.*', value)
-        #     if result:
-        #         return value
-        #     else:
-        #         return "error"
-        # check for a minimum of 1,123 ISK and trim anything after ISK
+        # remove these characters specifically as they are not used and frequently show up
         value = value.replace("\n","")
         value = value.replace("\"","")
         if type == "isk":
+            # remove the commas from the value
             translator = str.maketrans('', '', string.punctuation)
             isk = value.translate(translator)
-            isk = str(re.findall("\d+", isk)[0])
-            #result = re.search(r"([0-9]{1,3}[,])*[0-9]{3} [A-Z,a-z]{3}", value)
-            print(isk)
-            
+            # only return the numbers
+            isk = str(re.findall("\d+", isk)[0])            
             if isk.isnumeric():
                 return isk
             else:
                 return "error"
-        # check for a date from 0000/00/00 00:00:00 UTC -0
-        # 'UTC -0' optional because +/- value is unreliable
+
+        # check for a date in the format 0000/00/00 00:00:00
         if type == "time":
             date = value.split(" ")
             result = re.search(
@@ -192,6 +176,7 @@ class Parser:
                 return f'{date[0]} {date[1]}'
             else:
                 return "error"
+
         # checking to see if ship detected partial matches one of the known ship types
         if type == "playership":
             playership = value.upper()
@@ -203,6 +188,7 @@ class Parser:
                     break
                 else:
                     return "error"
+
         # verify if KM is a kill or loss
         if type == "kmtype":
             result = re.search(r'(KILL)?(LOSS)? REPORT', value)
@@ -211,31 +197,17 @@ class Parser:
                 return type[0]
             else:
                 return "error"
-        # if type == "playerid":
-            # print(value)
-            # result = re.search(r'.*(\[[I]?[i]?[D]?[0]?[O]?:[0-9]*\])', value)
-            # if result:
-            #     playerid = re.findall("\d+", value)[0]
-            #     print(playerid)
-            #     return playerid
-            # else:
-            #     result = re.search(r'(KILL)?(LOSS)? REPORT', value)
-            #     if result:
-            #         return "0"
-            #     else:
-            #         return "error"
-            # playerid = value.split(":")
-            # print(playerid.isnumeric())
-            # sys.exit()
+        
         # verify the number of participants
         if type == "participants":
-            result = re.search(r"[A-Z][a-z]* \[[0-9]*\]", value)
+            #really loose searching for some kind of numeric value
+            result = re.search(r".*\[[0-9]*\]", value)
             if result:
                 count = re.findall("\d+", value)[0]
                 return count
             else:
                 return "error"
-        # checking to see if OCR could detect a player with the final blow
+        # the corp tag can sometimes be problematic. Checking for known issues and correcting
         if type == "finalblow" or type == "name":
             
             if re.search(r'\[[A-Z,0-9]{2,4}[\)]', value):
@@ -254,6 +226,7 @@ class Parser:
                 return value
             else:
                 return "error"
+
         # checking if location satisfies similar to 'whatever < whatever < whatever'
         if type == "location":
             result = re.search(r'[\s]{1}[<]{1}[\s]{1}', value)
@@ -264,15 +237,16 @@ class Parser:
 
     # the killmail processor
     def processkm(self, filename, messageid,guildid):
-        # cleanup, because crop will shift for > 2.11 ratio
+       
         # remove files from previous run
         for oldname in os.listdir("output/"):
             os.remove("output/"+oldname)
         errors = 0
-        # process given filename, must be .jpg or .png
+        # process given filename, must be .jpg, .jpeg, or .png
         if filename.endswith(".png") or filename.endswith(".jpg") or filename.endswith(".jpeg"):
-            if not self.checksize(filename):
-                return 98
+            # if not self.checksize(filename):
+            #     return 98
+            # determine the screenshot pixel ratio, outputs file location to correct template
             templateimg = self.ssratio(f'screenshots/{filename}')
 
             if templateimg:
@@ -281,6 +255,7 @@ class Parser:
                 gray= cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
                 template= cv2.imread(templateimg,0)
+                # find template in screenshot
                 result= cv2.matchTemplate(gray, template, cv2.TM_CCOEFF)
                 min_val, max_val, min_loc, max_loc= cv2.minMaxLoc(result)
 
@@ -288,6 +263,7 @@ class Parser:
 
                 top_left= max_loc
                 bottom_right= (top_left[0] + width, top_left[1] + height)
+                # based on the area identified above, pass coordinates to the crop function to get cropped kill mail 
                 self.sscrop('output/resized_image.png',top_left+bottom_right)
             else:
                 print("Does not match any known ratio. Skipping")
@@ -315,10 +291,7 @@ class Parser:
                     if name == "time":
                         data[name] = "9999/09/09 00:00:00"
                     elif name == "isk":
-                        
-                        
                         data[name] = "123"
-                       
                     else:
                         data[name] = "0"
                 else:
