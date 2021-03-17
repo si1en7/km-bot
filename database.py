@@ -15,7 +15,7 @@ class KMDB:
         )
     def checkduplicate(self,data,table):
         cursor = self.db.cursor(dictionary=True)
-        sql = f'SELECT * FROM {table} WHERE name="{data["name"]}" AND isk="{data["isk"]}" '
+        sql = f'SELECT * FROM {table} WHERE name="{data["name"]}" AND isk="{data["isk"]}" AND guild_id="{data["guild_id"]}"'
         count = cursor.execute(sql)
         cursor.fetchall()
         return cursor.rowcount
